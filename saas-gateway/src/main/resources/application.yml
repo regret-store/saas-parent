@@ -1,0 +1,55 @@
+server:
+  port: 8080
+spring:
+  profiles:
+    active: local
+  application:
+    name: saas-gateway
+  cloud:
+    nacos:
+      discovery:
+        server-addr: 127.0.0.1:8848
+      config:
+        server-addr: 127.0.0.1:8848
+        import-check:
+          enabled: false # 🌟 必须要有这一行，关闭强制导入检查
+    gateway:
+      server:
+        webflux:
+          # 1. 允许预检请求 (OPTIONS) 通过，防止在路由匹配阶段被拦截
+          globalcors:
+            add-to-simple-url-handler-mapping: true
+            cors-configurations:
+              '[/**]':
+                allowedOriginPatterns: "*"
+                allowedMethods: "*"
+                allowedHeaders: "*"
+          # 原有的 routes 配置也必须在 server.webflux 下（如果之前没移过来，顺便确认一下）
+          routes:
+            - id: tenant-service
+              uri: lb://saas-tenant-service
+              predicates:
+                - Path=/api/tenant/**
+              filters:
+                - StripPrefix=2
+            - id: ai-service
+              uri: lb://saas-ai-service
+              predicates:
+                - Path=/api/ai/**
+              filters:
+                - StripPrefix=2
+          discovery:
+            locator:
+              enabled: true # 移到这里了
+
+  data:
+    redis:
+      host: localhost
+      port: 6379
+saas:
+  internal:
+    secret: ${INTERNAL_SECRET}
+  jwt:
+    # 使用环境变量 JWT_SECRET，如果本地没配，就用冒号后面的默认值
+    secret: ${JWT_SECRET}
+    expiration: 86400000

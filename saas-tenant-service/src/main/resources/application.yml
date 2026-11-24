@@ -1,0 +1,43 @@
+server:
+  port: 8081
+spring:
+  profiles:
+    active: local
+  application:
+    name: saas-tenant-service
+  datasource:
+    dynamic:
+      primary: master # 默认走主库（共享库）
+      strict: false # 不严格匹配，找不到库时用默认库
+      # 启用我们刚才写的自定义处理器
+      processor: com.saas.tenant.config.TenantDsProcessor
+      datasource:
+        master:
+          driver-class-name: com.mysql.cj.jdbc.Driver
+          url: jdbc:mysql://localhost:3307/saas_db?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai&allowPublicKeyRetrieval=true
+          username: root
+          password: ${MASTER_PASS}
+        vip: # 独立的数据源节点
+          driver-class-name: com.mysql.cj.jdbc.Driver
+          url: jdbc:mysql://localhost:3308/vip_db?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai&allowPublicKeyRetrieval=true
+          username: root
+          password: ${MASTER_PASS}
+  cloud:
+    nacos:
+      discovery:
+        server-addr: 127.0.0.1:8848
+      config:
+        server-addr: 127.0.0.1:8848
+        import-check:
+          enabled: false
+  data:
+    redis:
+      host: localhost
+      port: 6379
+saas:
+  internal:
+    secret: ${INTERNAL_SECRET}
+  jwt:
+    # 使用环境变量 JWT_SECRET，如果本地没配，就用冒号后面的默认值
+    secret: ${JWT_SECRET}
+    expiration: 86400000

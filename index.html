@@ -1,0 +1,324 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <title>SaaS 多租户管理后台</title>
+    <!-- 引入 Element Plus 样式 (字节跳动 CDN) -->
+    <link rel="stylesheet" href="https://cdn.staticfile.org/element-plus/2.2.15/index.css" />
+    <style>
+        body { margin: 0; background-color: #f0f2f5; font-family: 'Helvetica Neue', Helvetica, 'PingFang SC', 'Microsoft YaHei', Arial, sans-serif; }
+
+        /* 登录页样式 */
+        .login-container { display: flex; justify-content: center; align-items: center; height: 100vh; }
+        .login-box { width: 400px; padding: 40px; background: white; border-radius: 8px; box-shadow: 0 2px 12px 0 rgba(0,0,0,0.1); }
+
+        /* 后台主页样式 */
+        .dashboard-container { max-width: 1200px; margin: 0 auto; padding: 20px; }
+        .header { display: flex; justify-content: space-between; align-items: center; background: white; padding: 0 20px; height: 60px; box-shadow: 0 1px 4px rgba(0,21,41,0.08); margin-bottom: 20px; border-radius: 8px; }
+
+        /* AI 聊天框样式 */
+        .ai-chat-box { margin-top: 20px; background: white; border-radius: 8px; padding: 20px; box-shadow: 0 2px 12px 0 rgba(0,0,0,0.1); }
+        .chat-history { height: 400px; overflow-y: auto; border: 1px solid #ebeef5; border-radius: 4px; padding: 15px; margin-bottom: 15px; background-color: #fafafa; }
+        .message-item { margin-bottom: 15px; display: flex; }
+        .message-user { justify-content: flex-end; }
+        .message-ai { justify-content: flex-start; }
+        .bubble { max-width: 85%; padding: 12px 16px; border-radius: 8px; line-height: 1.6; font-size: 14px; word-wrap: break-word; }
+        .bubble-user { background-color: #409eff; color: white; border-top-right-radius: 0; }
+        .bubble-ai { background-color: #f4f4f5; color: #303133; border-top-left-radius: 0; }
+
+        /* 输入区样式 */
+        .input-area { display: flex; gap: 10px; }
+
+        /* 打字机光标 */
+        .typing-cursor::after {
+            content: '▋';
+            color: #409eff;
+            animation: blink 1s step-end infinite;
+            vertical-align: bottom;
+            margin-left: 2px;
+        }
+        @keyframes blink { 50% { opacity: 0; } }
+
+        /* Markdown 渲染后的样式 */
+        .bubble-ai p { margin-top: 0; margin-bottom: 10px; }
+        .bubble-ai p:last-child { margin-bottom: 0; }
+        .bubble-ai pre { background-color: #282c34; color: #abb2bf; padding: 12px; border-radius: 6px; overflow-x: auto; font-family: Consolas, Monaco, monospace; font-size: 13px; margin: 10px 0; }
+        .bubble-ai code { font-family: Consolas, Monaco, monospace; background-color: rgba(0,0,0,0.05); padding: 2px 4px; border-radius: 3px; color: #c7254e; }
+        .bubble-ai pre code { background-color: transparent; padding: 0; color: inherit; }
+        .bubble-ai ul, .bubble-ai ol { padding-left: 20px; margin: 10px 0; }
+        .bubble-ai blockquote { margin: 10px 0; padding-left: 10px; border-left: 4px solid #dcdfe6; color: #909399; }
+    </style>
+</head>
+<body>
+<div id="app">
+    <!-- 登录页面 -->
+    <div v-if="!token" class="login-container">
+        <div class="login-box">
+            <h2 style="text-align: center; margin-bottom: 30px; color: #303133;">SaaS 系统登录</h2>
+            <el-form label-position="top">
+                <el-form-item label="租户 ID (Tenant ID)">
+                    <el-input v-model="loginForm.tenantId" placeholder="例如: tenant_001"></el-input>
+                </el-form-item>
+                <el-form-item label="用户名">
+                    <el-input v-model="loginForm.username" placeholder="例如: 张三"></el-input>
+                </el-form-item>
+                <el-form-item label="密码">
+                    <el-input v-model="loginForm.password" type="password" placeholder="例如: 123456" show-password></el-input>
+                </el-form-item>
+                <el-button type="primary" style="width: 100%; margin-top: 10px; height: 40px; font-size: 16px;" @click="handleLogin" :loading="loading">登 录</el-button>
+            </el-form>
+        </div>
+    </div>
+
+    <!-- 后台主页 -->
+    <div v-else class="dashboard-container">
+        <!-- 顶部导航 -->
+        <div class="header">
+            <h3 style="color: #303133;">欢迎回来，<span style="color: #409eff;">{{ userInfo.tenantId }}</span> 租户</h3>
+            <el-button type="danger" size="small" plain @click="handleLogout">退出登录</el-button>
+        </div>
+
+        <!-- 用户列表卡片 -->
+        <el-card shadow="hover">
+            <template #header>
+                <div style="display: flex; justify-content: space-between; align-items: center;">
+                    <span style="font-weight: bold;">当前租户的用户列表</span>
+                    <el-button type="primary" size="small" @click="fetchUsers">刷新数据</el-button>
+                </div>
+            </template>
+            <el-table :data="userList" style="width: 100%" v-loading="tableLoading" stripe>
+                <el-table-column prop="id" label="ID" width="80" align="center"></el-table-column>
+                <el-table-column prop="tenantId" label="租户 ID" width="150" align="center"></el-table-column>
+                <el-table-column prop="username" label="用户名" align="center"></el-table-column>
+                <el-table-column prop="role" label="角色" align="center">
+                    <template #default="scope">
+                        <el-tag :type="scope.row.role === 'SUPER_ADMIN' ? 'danger' : (scope.row.role === 'TENANT_ADMIN' ? 'warning' : 'info')">
+                            {{ scope.row.role }}
+                        </el-tag>
+                    </template>
+                </el-table-column>
+                <el-table-column prop="createTime" label="创建时间" align="center"></el-table-column>
+            </el-table>
+        </el-card>
+
+        <!-- AI 助手卡片 -->
+        <div class="ai-chat-box">
+            <div style="display: flex; justify-content: space-between; margin-bottom: 15px; align-items: center;">
+                <h3 style="margin: 0; color: #303133;">🤖 AI 智能助手</h3>
+                <span style="font-size: 12px; color: #909399; background: #f4f4f5; padding: 4px 8px; border-radius: 4px;">当前租户专属额度扣减</span>
+            </div>
+
+            <div class="chat-history" id="chat-history">
+                <div v-for="(msg, index) in chatHistory" :key="index"
+                     :class="['message-item', msg.role === 'user' ? 'message-user' : 'message-ai']">
+                    <div :class="['bubble', msg.role === 'user' ? 'bubble-user' : 'bubble-ai', msg.role === 'ai' && msg.isTyping ? 'typing-cursor' : '']">
+                        <!-- 用户发纯文本，AI发Markdown -->
+                        <span v-if="msg.role === 'user'">{{ msg.text }}</span>
+                        <span v-else v-html="renderMarkdown(msg.text)"></span>
+                    </div>
+                </div>
+            </div>
+
+            <div class="input-area">
+                <el-input
+                        v-model="chatInput"
+                        placeholder="问点什么吧，比如：帮我写一段 Java 冒泡排序"
+                        @keyup.enter="sendChat"
+                        :disabled="chatLoading">
+                </el-input>
+                <el-button type="primary" @click="sendChat" :loading="chatLoading" style="width: 100px;">发送</el-button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- 放在 <body> 的最底部 -->
+<script src="https://cdn.staticfile.org/vue/3.2.31/vue.global.prod.min.js"></script>
+<script src="https://cdn.staticfile.org/element-plus/2.2.15/index.full.min.js"></script>
+<script src="https://cdn.staticfile.org/axios/0.27.2/axios.min.js"></script>
+<script src="https://cdn.staticfile.org/marked/4.0.16/marked.min.js"></script>
+
+<script>
+    const { createApp, ref, reactive, onMounted, nextTick } = Vue;
+    const { ElMessage } = ElementPlus;
+
+    // 统一 API 前缀
+    const API_BASE = 'http://localhost:8080/api';
+
+    createApp({
+        setup() {
+            const token = ref(localStorage.getItem('token') || '');
+            const userInfo = ref(JSON.parse(localStorage.getItem('userInfo') || '{}'));
+            const loading = ref(false);
+            const tableLoading = ref(false);
+            const userList = ref([]);
+
+            const loginForm = reactive({
+                tenantId: 'tenant_001',
+                username: '张三',
+                password: '123456'
+            });
+
+            // ================= AI 聊天相关状态 =================
+            const chatInput = ref('');
+            const chatHistory = ref([
+                { role: 'ai', text: '你好！我是您的 SaaS 平台专属 AI 助手，有什么我可以帮您的吗？' }
+            ]);
+            const chatLoading = ref(false);
+
+            // 渲染 Markdown
+            const renderMarkdown = (text) => {
+                if (!text) return '';
+                return marked.parse(text);
+            };
+
+            // ================= 登录与列表 =================
+            const handleLogin = async () => {
+                if (!loginForm.tenantId || !loginForm.username || !loginForm.password) {
+                    ElMessage.warning('请填写完整信息'); return;
+                }
+                loading.value = true;
+                try {
+                    const res = await axios.post(`${API_BASE}/tenant/auth/login`, loginForm);
+                    if (res.data.code === 0) {
+                        const data = res.data.data;
+                        token.value = data.token;
+                        userInfo.value = data;
+                        localStorage.setItem('token', data.token);
+                        localStorage.setItem('userInfo', JSON.stringify(data));
+                        ElMessage.success('登录成功');
+                        fetchUsers();
+                    } else {
+                        ElMessage.error(res.data.message || '登录失败');
+                    }
+                } catch (error) {
+                    ElMessage.error('登录请求异常，请检查后端服务');
+                } finally {
+                    loading.value = false;
+                }
+            };
+
+            const fetchUsers = async () => {
+                tableLoading.value = true;
+                try {
+                    const res = await axios.get(`${API_BASE}/tenant/test/users`, {
+                        headers: { 'Authorization': `Bearer ${token.value}` }
+                    });
+                    if (res.data.code === 0) {
+                        userList.value = res.data.data;
+                    } else {
+                        ElMessage.error(res.data.message);
+                    }
+                } catch (error) {
+                    if (error.response && error.response.status === 401) handleLogout();
+                    else ElMessage.error('获取数据失败或无权限');
+                } finally {
+                    tableLoading.value = false;
+                }
+            };
+
+            // ================= AI 聊天核心逻辑 (SSE 流式) =================
+            const sendChat = async () => {
+                const msg = chatInput.value.trim();
+                if (!msg || chatLoading.value) return;
+
+                // 1. 记录用户消息
+                chatHistory.value.push({ role: 'user', text: msg });
+                chatInput.value = '';
+                chatLoading.value = true;
+                scrollToBottom();
+
+                // 2. 插入 AI 的占位消息（带打字机光标）
+                chatHistory.value.push({ role: 'ai', text: '', isTyping: true });
+                const aiMsgIndex = chatHistory.value.length - 1;
+
+                try {
+                    // 3. 发起 Fetch 请求
+                    const response = await fetch(`${API_BASE}/ai/chat/stream?message=${encodeURIComponent(msg)}`, {
+                        headers: { 'Authorization': `Bearer ${token.value}` }
+                    });
+
+                    // 4. 处理 4xx/5xx 异常 (比如 403 额度不足)
+                    if (!response.ok) {
+                        if (response.status === 403) {
+                            const err = await response.text();
+                            chatHistory.value[aiMsgIndex].text = `❌ ${err}`;
+                        } else {
+                            chatHistory.value[aiMsgIndex].text = `❌ 请求失败，状态码: ${response.status}`;
+                        }
+                        chatHistory.value[aiMsgIndex].isTyping = false;
+                        return;
+                    }
+
+                    // 5. 处理 SSE 流
+                    const reader = response.body.getReader();
+                    const decoder = new TextDecoder('utf-8');
+                    let buffer = '';
+
+                    while (true) {
+                        const { done, value } = await reader.read();
+                        if (done) break;
+
+                        buffer += decoder.decode(value, { stream: true });
+
+                        // 按换行符切割
+                        const lines = buffer.split('\n');
+                        // 最后一行可能不完整，留在 buffer 里
+                        buffer = lines.pop() || '';
+
+                        for (const line of lines) {
+                            if (line.startsWith('data:')) {
+                                // 截掉前 5 个字符（data:），保留后面的所有内容（包括空格）
+                                const text = line.substring(5);
+
+                                // 如果文本是空的，说明大模型换行了，补一个换行符
+                                if (text === '') {
+                                    chatHistory.value[aiMsgIndex].text += '\n';
+                                } else {
+                                    chatHistory.value[aiMsgIndex].text += text;
+                                }
+                                scrollToBottom();
+                            }
+                        }
+                    }
+                } catch (error) {
+                    console.error(error);
+                    chatHistory.value[aiMsgIndex].text += '\n\n❌ 连接中断，请重试。';
+                } finally {
+                    // 6. 结束流式输出，移除光标
+                    chatHistory.value[aiMsgIndex].isTyping = false;
+                    chatLoading.value = false;
+                    scrollToBottom();
+                }
+            };
+
+            // 滚动到最底部
+            const scrollToBottom = () => {
+                nextTick(() => {
+                    const box = document.getElementById('chat-history');
+                    if (box) box.scrollTop = box.scrollHeight;
+                });
+            };
+
+            // 退出登录
+            const handleLogout = () => {
+                token.value = ''; userInfo.value = {}; userList.value = [];
+                chatHistory.value = [{ role: 'ai', text: '你好！我是您的 SaaS 平台专属 AI 助手，有什么我可以帮您的吗？' }];
+                localStorage.removeItem('token'); localStorage.removeItem('userInfo');
+                ElMessage.success('已退出登录');
+            };
+
+            onMounted(() => {
+                if (token.value) fetchUsers();
+            });
+
+            return {
+                token, userInfo, loginForm, loading, userList, tableLoading,
+                chatInput, chatHistory, chatLoading,
+                handleLogin, fetchUsers, sendChat, handleLogout, renderMarkdown
+            };
+        }
+    }).use(ElementPlus).mount('#app');
+</script>
+</body>
+</html>

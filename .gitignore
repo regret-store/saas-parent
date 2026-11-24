@@ -1,0 +1,78 @@
+target/
+!.mvn/wrapper/maven-wrapper.jar
+!**/src/main/**/target/
+!**/src/test/**/target/
+.kotlin
+
+### IntelliJ IDEA ###
+.idea/
+modules.xml
+jarRepositories.xml
+compiler.xml
+libraries/
+dataSources/
+dataSources.local.xml
+workspace.xml
+misc.xml
+encodings.xml
+vcs.xml
+*.iws
+*.iml
+*.ipr
+
+### Eclipse ###
+.apt_generated
+.classpath
+.factorypath
+.project
+.settings
+.springBeans
+.sts4-cache
+
+### NetBeans ###
+/nbproject/private/
+/nbbuild/
+/dist/
+/nbdist/
+/.nb-gradle/
+build/
+!**/src/main/**/build/
+!**/src/test/**/build/
+
+### VS Code ###
+.vscode/
+
+### Mac OS ###
+.DS_Store
+
+### 密钥与环境配置（核心安全区）###
+application-local.yml
+application-local.yaml
+application-local.properties
+application-dev.yml
+application-test.yml
+application-prod.yml
+.env
+.env.local
+.env.*.local
+*.pem
+*.key
+*.jks
+*.p12
+*.pfx
+
+# 保留配置模板文件（必须提交，告诉协作者需要配哪些密钥）
+!application-local.yml.example
+!*.yml.example
+!*.yaml.example
+!*.properties.example
+
+### 日志与临时文件 ###
+*.log
+logs/
+log/
+*.tmp
+*.bak
+*.swp
+*.swo
+*~
